@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import random
 import copy
+from time import time
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -31,14 +32,16 @@ class AIRS:
         self.AFFINITY_THRESHOLD_SCALAR = AFFINITY_THRESHOLD_SCALAR
         self.KNN_K = KNN_K
 
-        self.MC_POOL = {_class : [] for _class in range(CLASS_NUMBER)}
-        self.ARB_POOL = {_class : [] for _class in range(CLASS_NUMBER)}
+        self.MC_POOL = {_class : [] for _class in range(self.CLASS_NUMBER)}
+        self.ARB_POOL = {_class : [] for _class in range(self.CLASS_NUMBER)}
         self.MC_iterations = []
 
         self.MINs = np.array([0 for i in range(65)])
         self.MAXs = np.array([0 for i in range(65)])
         
         self.AFFINITY_THRESHOLD = 0.0
+
+        self.train_set_length = len(train_set)  # for modelInfo function
 
 
 
@@ -174,6 +177,7 @@ class AIRS:
 
 
     def train(self):
+        startTime = time()
         print('Training Started\n')
         print('dataset lenght : ',len(self.train_set))
 
@@ -253,8 +257,7 @@ class AIRS:
                         # print('calculating the ressource of ARB cell : {} * {} = {}'.format(ARB_cell.stimulation, self.CLONAL_RATE, ARB_cell.ressources))
                 ressss.sort(reverse=True)
                 
-                print('')
-                print('sorted array of ARB ressources : ',ressss)
+                print('\nsorted array of ARB ressources : ',ressss)
 
                 res_allocated = sum([x.ressources for x in self.ARB_POOL[_class]])
                 res_allowed_limit = self.TOTAL_RESSOURCES
@@ -296,8 +299,15 @@ class AIRS:
 
         # getting the final MC_POOL
         self.MC_iterations.append(copy.deepcopy(self.MC_POOL))
+        endTime = time()
+        self.trainingTime = endTime - startTime
         print("Training complete\n")
 
+
+
+
+
+    # non essential functions
 
     @staticmethod
     def getMCInfo(mc_pool):
@@ -339,6 +349,40 @@ class AIRS:
         plt.show
 
 
+    def showModelInfo(self):
+        trained = len(self.MC_POOL[0]) != 0
+
+        # training time
+        training_time_in_seconds, train_hour, train_minute, train_seconds = round(self.trainingTime),0,0,0
+        if training_time_in_seconds > 3600:
+            train_hour = training_time_in_seconds // 3600
+            training_time_in_seconds = training_time_in_seconds % 3600
+        if training_time_in_seconds > 60:
+            train_minute = training_time_in_seconds // 60
+            training_time_in_seconds = training_time_in_seconds % 60
+        train_seconds = training_time_in_seconds
+        timeToPrint = ''
+        timeToPrint += '{} hours '.format(train_hour) if train_hour > 0 else ''
+        timeToPrint += '{} minutes '.format(train_minute) if train_minute > 0 else ''
+        timeToPrint += '{} seconds\n'.format(train_seconds)
+        print('Model Trained in ',timeToPrint)
+
+        print('Dataset lenght : {}'.format(self.train_set_length + self.test_set_length))
+        print('Trainset : {}\nTestset : {}\n'.format(self.train_set_length, self.test_set_length))
+
+
+        mcLenghts = []
+        for _class in self.MC_POOL.keys():
+            mcLenghts.append(len(self.MC_POOL[_class]))
+        print('size of MC POOL : {}'.format(sum(mcLenghts)))
+        for i in range(len(mcLenghts)):
+            print('MC class {} : {}'.format(i, mcLenghts[i]))
+
+        
+
+
+
+
 
 
 
@@ -347,7 +391,7 @@ class AIRS:
 
 
     def classify(self, antigene):
-        if(self.MC_POOL is None):
+        if(len(self.MC_POOL) == 0):
             raise Exception("AIRS must be trained first")
 
         # stimulating all memory cells with the new antigene
@@ -358,14 +402,13 @@ class AIRS:
                 vote_array.append(cell)
 
         vote_array = np.array(list(sorted(vote_array, key=lambda cell : -cell.stimulation)))
-        v = {0:0, 1:0}
+        v = {_class : 0 for _class in range(self.CLASS_NUMBER)}
 
         K = min(self.KNN_K, len(vote_array))
 
         for x in vote_array[:K]:
             v[x._class] += 1
 
-        reverseMapping = {0: 'Benign', 1: 'Syn'}
         maxVote = 0
         _class = 0
         for x in v.keys():
@@ -376,19 +419,47 @@ class AIRS:
 
 
     def Eval(self, test_set:np.ndarray):
+        lenTest = len(test_set)
+        self.test_set_length = lenTest  # for modelInfo function
         print('Evaluation Started')
         n_correct= 0
         eval_tracker = 0
-        lenTest = len(test_set)
+
+        self.real_values = []
+        self.pred_values = []
+
         for antigene, _class in zip(test_set[:,:-1], test_set[:,-1]):
             if eval_tracker % (lenTest//10) == 0:
                 print('progression : {} %'.format(round((eval_tracker/lenTest*100),2)))
-            if self.classify(antigene) == _class:
-                n_correct += 1
             eval_tracker += 1
+            
+            predicted_class = self.classify(antigene)
+            self.real_values.append(_class)           # for confusion matrix
+            self.pred_values.append(predicted_class)   # for confusion matrix
+            if predicted_class == _class:
+                n_correct += 1
         result = n_correct / lenTest
         print('Evaluation Finished\n')
         print('Accuracy : {} %'.format(result * 100))
+
+
+    def displayConfusionMatrix(self):
+        matrix = np.zeros((self.CLASS_NUMBER, self.CLASS_NUMBER), dtype=int)
+        for real, pred in zip(self.real_values, self.pred_values):
+            matrix[int(real), pred] += 1
+
+        fig, ax = plt.subplots()
+        confMatrx = ax.matshow(matrix)
+        ax.set_title('Confusion Matrix')
+        ax.set_xlabel('Predicted classes')
+        ax.set_ylabel('Real classes')
+
+        fig.colorbar(confMatrx)
+
+        for (i, j), val in np.ndenumerate(matrix):
+            ax.text(i, j, str(val), ha='center', va='center', color='black')
+
+        plt.show()
 
 
 
@@ -426,7 +497,7 @@ class MC:
                 if random.random() <= MUTATION_RATE:
                     stddev = 0.001 * (MAXs[idx] - MINs[idx])
                     mutated_vect.append(random.gauss(feature, stddev))
-                    # mutated_vect.append(random.uniform(MINs[idx], MAXs[idx]))
+                    # mutated_vect.append(random.uniform(MINs[idx], MAXs[idx]))        0    -    1
                     mutated = True
                 else:
                     mutated_vect.append(feature)
