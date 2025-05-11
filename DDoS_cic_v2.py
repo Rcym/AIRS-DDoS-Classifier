@@ -6,6 +6,7 @@ from time import time
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from sklearn.metrics import precision_score, recall_score, f1_score, classification_report
 
 class AIRS:
     """
@@ -42,6 +43,7 @@ class AIRS:
         self.AFFINITY_THRESHOLD = 0.0
 
         self.train_set_length = len(train_set)  # for modelInfo function
+        self.modelAccuracy = 0.0
 
 
 
@@ -99,13 +101,6 @@ class AIRS:
         for _ in range(int(lenTrain * self.MC_INIT_RATE)):
             random_sample = self.train_set[np.random.randint(lenTrain)]
             self.MC_POOL[random_sample[-1]].append(MC(vector=random_sample[:-1], _class=random_sample[-1]))
-
-        print('len(self.train_set) = {}'.format(lenTrain))
-        print('self.INIT_RATE = {}'.format(self.MC_INIT_RATE))
-        print('calculating {} * {} = {}'.format(int(len(self.train_set)), self.MC_INIT_RATE, int(len(self.train_set))* self.MC_INIT_RATE))
-        print("len(self.MC_POOL) inside the init function = {}".format(len(self.MC_POOL)))
-        print("MC of class 0 : ",len(self.MC_POOL[0]))
-        print("MC of class 0 : ",len(self.MC_POOL[1]))
 
 
     def min_res_ARB(self, _class:int):
@@ -197,12 +192,7 @@ class AIRS:
         # core training loop
         train_tracker = 0
         for antigene, _class in zip(self.train_set[:,:-1],self.train_set[:,-1]):
-            logfile.write('\n\n\n =======================  core loop : {}  =======================\n\n'.format(train_tracker))
-            # print('\n============= core loop : {} ============='.format(train_tracker))
-            # print('MC_POOL class 0 : {}'.format(len(self.MC_POOL[0])))
-            # print('MC_POOL class 1 : {}'.format(len(self.MC_POOL[1])))
-            # print('ARB_POOL class 0 : {}'.format(len(self.ARB_POOL[0])))
-            # print('ARB_POOL class 1 : {}'.format(len(self.ARB_POOL[1])))
+            # logfile.write('\n\n\n =======================  core loop : {}  =======================\n\n'.format(train_tracker))
 
             train_tracker = self.updateTracker(train_tracker, len(self.train_set), 5, logfile)
 
@@ -213,26 +203,23 @@ class AIRS:
                 self.MC_POOL[_class].append(Best_MC_match)
             else:
                 Best_MC_match = self.get_max_stim_MC(antigene, _class)
-                # print('BEST MC MATCH : {}\n'.format(Best_MC_match))
-                logfile.write('BEST MC MATCH : {}\n'.format(Best_MC_match))
+                # logfile.write('BEST MC MATCH : {}\n'.format(Best_MC_match))
 
             
 
             # ARB Generation
             self.ARB_POOL[_class].append(ARB(vector=Best_MC_match.vector, _class=_class))
             Best_MC_match_STIM = Best_MC_match.stimulate(antigene)
-            logfile.write('Best_MC_match stimulation with antigene : {}'.format(Best_MC_match_STIM))
+            # logfile.write('Best_MC_match stimulation with antigene : {}'.format(Best_MC_match_STIM))
 
             # determining the number of max clones
             MAX_CLONES = int(self.CLONAL_RATE * self.HYPER_CLONAL_RATE * Best_MC_match_STIM)
-            # print('MAX_CLONE = CLONAL_RATE * HYPER_CLONAL_RATE * Best_MC_match_STIM')
-            # print('MAX_CLONE = {} * {} * {} = {}'.format(self.CLONAL_RATE, self.HYPER_CLONAL_RATE, Best_MC_match_STIM, MAX_CLONES))
-            logfile.write('MAX_CLONE = {} * {} * {} = {}\n'.format(self.CLONAL_RATE, self.HYPER_CLONAL_RATE, Best_MC_match_STIM, MAX_CLONES))
-            logfile.write('CLONAL EXPANSION AND COMPETING FOR RESSOURCES loop\n')
+            # logfile.write('MAX_CLONE = {} * {} * {} = {}\n'.format(self.CLONAL_RATE, self.HYPER_CLONAL_RATE, Best_MC_match_STIM, MAX_CLONES))
+            # logfile.write('CLONAL EXPANSION AND COMPETING FOR RESSOURCES loop\n')
             iter = 0
             while True:
                 iter += 1
-                logfile.write('\niter : {}__________________________________\n'.format(iter))
+                # logfile.write('\niter : {}__________________________________\n'.format(iter))
                 # generating MAX_CLONES number of ARBs from the Best_MC_match
                 num_clones = 0
                 bestARB = max(self.ARB_POOL[_class], key=lambda cell: cell.stimulation)
@@ -242,34 +229,29 @@ class AIRS:
                     newClone = bestARB.mutate(MINs, MAXs, self.MUTATION_RATE)
                     self.ARB_POOL[_class].append(newClone)
 
-                # print('after clone creation, ARB numbers : {} | {}'.format(len(self.ARB_POOL[0]),len(self.ARB_POOL[1])))
                 
 
                 # competition for ressources
                 avgStim_in_ARB_pool= sum([x.stimulate(antigene) for x in self.ARB_POOL[_class]]) / len(self.ARB_POOL[_class])
-                # print('avgStim in ARB pool = ', avgStim_in_ARB_pool)
-                logfile.write('avgStim in ARB pool = {}\n'.format(avgStim_in_ARB_pool))
+                # logfile.write('avgStim in ARB pool = {}\n'.format(avgStim_in_ARB_pool))
 
-                MIN_STIM, MAX_STIM = self.Min_Max_Stim_ARB(antigene)
 
                 # normalizing the ressources
-                ressss = []
+                MIN_STIM, MAX_STIM = self.Min_Max_Stim_ARB(antigene)
+                # ressss = []
                 for c in self.ARB_POOL.keys():
                     for ARB_cell in self.ARB_POOL.get(c):
                         ARB_cell.stimulation = (ARB_cell.stimulation - MIN_STIM) / (MAX_STIM - MIN_STIM)
                         ARB_cell.ressources = ARB_cell.stimulation # * self.CLONAL_RATE
-                        ressss.append(ARB_cell.ressources)
-                        # print('ARB cell ressource : ',ARB_cell.ressources)
-                        # print('calculating the ressource of ARB cell : {} * {} = {}'.format(ARB_cell.stimulation, self.CLONAL_RATE, ARB_cell.ressources))
-                ressss.sort(reverse=True)
+                        # ressss.append(ARB_cell.ressources)
+                # ressss.sort(reverse=True)
                 
                 # print('\nsorted array of ARB ressources : ',ressss)
-                logfile.write('sorted ARB ressources : {}\n'.format([round(float(x),3) for x in ressss]))
+                # logfile.write('sorted ARB ressources : {}\n'.format([round(float(x),3) for x in ressss]))
 
                 res_allocated = sum([x.ressources for x in self.ARB_POOL[_class]])
                 res_allowed_limit = self.TOTAL_RESSOURCES
-                # print('\nres allocated {}\ntotal ressources allowed: {}'.format(res_allocated, res_allowed_limit))
-                logfile.write('res allocated {}\ntotal ressources allowed: {}\n'.format(res_allocated, res_allowed_limit))
+                # logfile.write('res allocated {}\ntotal ressources allowed: {}\n'.format(res_allocated, res_allowed_limit))
     
                 while res_allocated > res_allowed_limit:
                     res_to_remove = res_allocated - res_allowed_limit
@@ -279,34 +261,27 @@ class AIRS:
                     if ARB_to_remove.ressources <= res_to_remove:
                         self.ARB_POOL[_class].remove(ARB_to_remove)
                         res_allocated -= ARB_to_remove.ressources
-                        # print('WORST ARB REMOVED')
-                        # logfile.write('WORST ARB REMOVE\n')
                     else:
                         self.ARB_POOL[_class][ARB_to_remove_Index].ressources -= res_to_remove
                         res_allocated -= res_to_remove
 
                 # print('checking if {} (avg_stim) > {} (aff threshold) OR if {} (iter) >= {} (max_iter)'.format(avgStim_in_ARB_pool, self.AFFINITY_THRESHOLD, iter, self.MAX_ITER))
-                logfile.write('checking if {} (avg_stim) > 0.8 OR if {} (iter) >= {} (max_iter)\n'.format(avgStim_in_ARB_pool, iter, self.MAX_ITER))
-                # if (avgStim_in_ARB_pool > self.AFFINITY_THRESHOLD) or (iter >= self.MAX_ITER):
-                if (avgStim_in_ARB_pool > 0.8) or (iter >= self.MAX_ITER):
+                # logfile.write('checking if {} (avg_stim) > 0.9 OR if {} (iter) >= {} (max_iter)\n'.format(avgStim_in_ARB_pool, iter, self.MAX_ITER))
+                if (avgStim_in_ARB_pool > self.AFFINITY_THRESHOLD) or (iter >= self.MAX_ITER):
+                # if (avgStim_in_ARB_pool > 0.9) or (iter >= self.MAX_ITER):
                     break
             
             MC_candidate = self.get_max_stim_ARB_as_MC(_class)
             MC_candidate.stimulate(antigene)
-            # print('MC candidate : ', MC_candidate)
 
-            # print('comparing the stimulation of MC candidate with MC best match')
-            # print('MC candidate stimulation : {}\nMC best match stimulation : {}'.format(MC_candidate.stimulation, Best_MC_match.stimulation))
-            logfile.write('MC candidate stimulation : {}\nMC best match stimulation : {}\n'.format(MC_candidate.stimulation, Best_MC_match.stimulation))
+            # logfile.write('MC candidate stimulation : {}\nMC best match stimulation : {}\n'.format(MC_candidate.stimulation, Best_MC_match.stimulation))
             if MC_candidate.stimulation > Best_MC_match.stimulation:
-                # if self.affinity(MC_candidate.vector, Best_MC_match.vector) < self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR:
-                if self.affinity(MC_candidate.vector, Best_MC_match.vector) > 0.9:  # was < !!!!!!!!!!
+                if self.affinity(MC_candidate.vector, Best_MC_match.vector) < self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR:
+                # if self.affinity(MC_candidate.vector, Best_MC_match.vector) > 1:  # was < !!!!!!!!!!
                     self.MC_POOL[_class].remove(Best_MC_match)
-                    # print('affinity difference too small -> mc best match removed')
-                    logfile.write('affinity difference too small -> mc best match removed\n')
+                    # logfile.write('affinity difference too small -> mc best match removed\n')
                 self.MC_POOL[_class].append(MC_candidate)
-                logfile.write('MC CANDIDATE ADDED\n')
-                # print('MC CANDIDATE ADDED')
+                # logfile.write('MC CANDIDATE ADDED\n')
 
 
             # updating the MC iteration with current pool
@@ -383,9 +358,7 @@ class AIRS:
         timeToPrint += '{} seconds\n'.format(train_seconds)
         print('Model Trained in ',timeToPrint)
 
-        print('Dataset lenght : {}'.format(self.train_set_length + self.test_set_length))
-        print('Trainset : {}\nTestset : {}\n'.format(self.train_set_length, self.test_set_length))
-
+        print('Dataset lenght : {}   =  {} (trainset)  +  {} (testset)\n'.format(self.train_set_length + self.test_set_length, self.train_set_length, self.test_set_length))
 
         mcLenghts = []
         for _class in self.MC_POOL.keys():
@@ -394,8 +367,21 @@ class AIRS:
         for i in range(len(mcLenghts)):
             print('MC class {} : {}'.format(i, mcLenghts[i]))
 
-        
 
+    def getAccuracy(self) -> float:
+        return self.modelAccuracy
+    
+    def getReport(self):
+        return classification_report(self.real_values, self.pred_values, output_dict=True)
+        
+    def getMcPOOLasDataset(self):
+        vectors = []
+        classes = []
+        for c in self.MC_POOL.keys():
+            for cell in self.MC_POOL.get(c):
+                vectors.append(cell.vector)
+                classes.append(cell._class)
+        return np.array(vectors), np.array(classes)
 
 
 
@@ -435,6 +421,7 @@ class AIRS:
 
 
     def Eval(self, test_set:np.ndarray):
+
         lenTest = len(test_set)
         self.test_set_length = lenTest  # for modelInfo function
         print('Evaluation Started')
@@ -454,34 +441,43 @@ class AIRS:
             self.pred_values.append(predicted_class)   # for confusion matrix
             if predicted_class == _class:
                 n_correct += 1
-        result = n_correct / lenTest
+        self.modelAccuracy = n_correct / lenTest
         print('Evaluation Finished\n')
-        print('Accuracy : {} %'.format(result * 100))
+        print('Accuracy : {} %'.format(self.modelAccuracy * 100))
 
 
-    def displayConfusionMatrix(self):
-        class_names = ['DrDoS_NTP', 'TFTP', 'Benign', 'Syn', 'UDP', 'DrDoS_UDP', 'UDP-lag', 'MSSQL', 'DrDoS_MSSQL', 'DrDoS_DNS', 'DrDoS_SNMP', 'LDAP', 'DrDoS_LDAP', 'Portmap', 'NetBIOS', 'DrDoS_NetBIOS', 'UDPLag', 'WebDDoS']
-        
+
+    def displayConfusionMatrix(self, class_names=None, title=None, max=None, figsize=None):
+        if class_names == None:
+            class_names = ['DrDoS_NTP', 'TFTP', 'Benign', 'Syn', 'UDP', 'DrDoS_UDP', 'UDP-lag', 'MSSQL', 'DrDoS_MSSQL', 'DrDoS_DNS', 'DrDoS_SNMP', 'LDAP', 'DrDoS_LDAP', 'Portmap', 'NetBIOS', 'DrDoS_NetBIOS', 'UDPLag', 'WebDDoS']
+        if title == None:
+            title = 'Confusion Matrix'
+        if max == None:
+            max = 100
+        if figsize == None:
+            figsize = (15,10)
+
         matrix = np.zeros((self.CLASS_NUMBER, self.CLASS_NUMBER), dtype=int)
         for real, pred in zip(self.real_values, self.pred_values):
             matrix[int(real), pred] += 1
 
-        fig, ax = plt.subplots(figsize=(15,10))
+        fig, ax = plt.subplots(figsize=figsize)
         confMatrx = ax.matshow(matrix)
-        ax.set_title('Confusion Matrix')
+        ax.set_title(title)
         ax.set_xlabel('Predicted classes')
         ax.set_ylabel('Real classes')
+        ax.set_xticks(range(len(class_names)))
+        ax.set_xticklabels(class_names, rotation=90)
         ax.set_yticks(range(len(class_names)))
         ax.set_yticklabels(class_names)
 
         fig.colorbar(confMatrx)
 
         for (i, j), val in np.ndenumerate(matrix):
-            ax.text(i, j, str(val/2), ha='center', va='center', color='black')
+            ax.text(i, j, str(round(val*100/max, 1)), ha='center', va='center', color='black')
 
         plt.tight_layout( )
         plt.show()
-
 
 
 
@@ -517,9 +513,9 @@ class MC:
             mutated_vect = []
             for idx, feature in enumerate(self.vector):
                 if random.random() <= MUTATION_RATE:
-                    stddev = 0.01 * (MAXs[idx] - MINs[idx])
+                    stddev = 0.02 * (MAXs[idx] - MINs[idx])
                     mutated_vect.append(random.gauss(feature, stddev))
-                    # mutated_vect.append(random.uniform(MINs[idx], MAXs[idx]))        0    -    1
+                    # mutated_vect.append(random.uniform(MINs[idx], MAXs[idx]))
                     mutated = True
                 else:
                     mutated_vect.append(feature)
@@ -548,7 +544,7 @@ class ARB:
             mutated_vect = []
             for idx, feature in enumerate(self.vector):
                 if random.random() <= MUTATION_RATE:
-                    stddev = 0.01 * (MAXs[idx] - MINs[idx])
+                    stddev = 0.02 * (MAXs[idx] - MINs[idx])
                     mutated_vect.append(random.gauss(feature, stddev))
                     # mutated_vect.append(random.uniform(MINs[idx], MAXs[idx]))
                     mutated = True
