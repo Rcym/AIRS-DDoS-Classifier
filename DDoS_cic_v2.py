@@ -267,8 +267,8 @@ class AIRS:
 
                 # print('checking if {} (avg_stim) > {} (aff threshold) OR if {} (iter) >= {} (max_iter)'.format(avgStim_in_ARB_pool, self.AFFINITY_THRESHOLD, iter, self.MAX_ITER))
                 # logfile.write('checking if {} (avg_stim) > 0.9 OR if {} (iter) >= {} (max_iter)\n'.format(avgStim_in_ARB_pool, iter, self.MAX_ITER))
-                if (avgStim_in_ARB_pool > self.AFFINITY_THRESHOLD) or (iter >= self.MAX_ITER):
-                # if (avgStim_in_ARB_pool > 0.9) or (iter >= self.MAX_ITER):
+                # if (avgStim_in_ARB_pool > self.AFFINITY_THRESHOLD) or (iter >= self.MAX_ITER):
+                if (avgStim_in_ARB_pool > 0.9) or (iter >= self.MAX_ITER):  # changed this to test
                     break
             
             MC_candidate = self.get_max_stim_ARB_as_MC(_class)
@@ -276,8 +276,8 @@ class AIRS:
 
             # logfile.write('MC candidate stimulation : {}\nMC best match stimulation : {}\n'.format(MC_candidate.stimulation, Best_MC_match.stimulation))
             if MC_candidate.stimulation > Best_MC_match.stimulation:
-                if self.affinity(MC_candidate.vector, Best_MC_match.vector) < self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR:
-                # if self.affinity(MC_candidate.vector, Best_MC_match.vector) > 1:  # was < !!!!!!!!!!
+                # if self.affinity(MC_candidate.vector, Best_MC_match.vector) < self.AFFINITY_THRESHOLD * self.AFFINITY_THRESHOLD_SCALAR:
+                if self.affinity(MC_candidate.vector, Best_MC_match.vector) > 0.98:  # was < !!!!!!!!!!  chanegd this
                     self.MC_POOL[_class].remove(Best_MC_match)
                     # logfile.write('affinity difference too small -> mc best match removed\n')
                 self.MC_POOL[_class].append(MC_candidate)
